@@ -80,7 +80,7 @@ internal fun Runnable.asTask(submissionTime: Long, taskContext: TaskContext): Ta
     TaskImpl(this, submissionTime, taskContext)
 
 // Non-reusable Task implementation to wrap Runnable instances that do not otherwise implement task
-private class TaskImpl(
+internal class TaskImpl(
     @JvmField val block: Runnable,
     submissionTime: Long,
     taskContext: TaskContext

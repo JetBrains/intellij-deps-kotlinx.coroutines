@@ -148,6 +148,9 @@ internal class LimitedDispatcher(
 internal fun Int.checkParallelism() = require(this >= 1) { "Expected positive parallelism level, but got $this" }
 
 internal fun CoroutineDispatcher.namedOrThis(name: String?): CoroutineDispatcher {
-    if (name != null) return NamedDispatcher(this, name)
+    if (name != null) {
+        if (this is SoftLimitedParallelism) return NamedSoftParallelismDispatcher(this, name)
+        return NamedDispatcher(this, name)
+    }
     return this
 }
