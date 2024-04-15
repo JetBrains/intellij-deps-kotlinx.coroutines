@@ -51,3 +51,5 @@ internal actual class UndispatchedCoroutine<in T> actual constructor(
 ) : ScopeCoroutine<T>(context, uCont) {
     override fun afterResume(state: Any?) = uCont.resumeWith(recoverResult(state, uCont))
 }
+
+internal actual inline fun <T> withThreadLocalContext(context: CoroutineContext, block: () -> T) : T = block()

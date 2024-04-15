@@ -63,7 +63,9 @@ private fun <T, R> ScopeCoroutine<T>.startUndispatched(
     receiver: R, block: suspend R.() -> T
 ): Any? {
     val result = try {
-        block.startCoroutineUninterceptedOrReturn(receiver, this)
+        withThreadLocalContext(this.context) {
+            block.startCoroutineUninterceptedOrReturn(receiver, this)
+        }
     } catch (e: DispatchException) {
         // Special codepath for failing CoroutineDispatcher: rethrow an exception
         // immediately without waiting for children to indicate something is wrong

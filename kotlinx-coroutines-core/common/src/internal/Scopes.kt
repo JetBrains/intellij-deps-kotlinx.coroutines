@@ -32,7 +32,9 @@ internal open class ScopeCoroutine<in T>(
 
     override fun afterResume(state: Any?) {
         // Resume direct because scope is already in the correct context
-        uCont.resumeWith(recoverResult(state, uCont))
+        withThreadLocalContext(uCont.context) {
+            uCont.resumeWith(recoverResult(state, uCont))
+        }
     }
 }
 

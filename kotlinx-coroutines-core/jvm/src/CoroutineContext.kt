@@ -1,6 +1,7 @@
 package kotlinx.coroutines
 
 import kotlinx.coroutines.internal.*
+import kotlinx.coroutines.internal.intellij.currentContextThreadLocal
 import kotlin.coroutines.*
 import kotlin.coroutines.jvm.internal.CoroutineStackFrame
 
@@ -102,9 +103,19 @@ private fun foldCopies(originalContext: CoroutineContext, appendContext: Corouti
 internal actual inline fun <T> withCoroutineContext(context: CoroutineContext, countOrElement: Any?, block: () -> T): T {
     val oldValue = updateThreadContext(context, countOrElement)
     try {
-        return block()
+        return withThreadLocalContext(context, block)
     } finally {
         restoreThreadContext(context, oldValue)
+    }
+}
+
+internal actual inline fun <T> withThreadLocalContext(context: CoroutineContext, block: () -> T) : T {
+    val old = currentContextThreadLocal.get()
+    currentContextThreadLocal.set(context)
+    try {
+        return block()
+    } finally {
+        currentContextThreadLocal.set(old)
     }
 }
 
@@ -121,7 +132,7 @@ internal actual inline fun <T> withContinuationContext(continuation: Continuatio
         null // fast path -- don't even try to find undispatchedCompletion as there's nothing to restore in the context
     }
     try {
-        return block()
+        return withThreadLocalContext(context, block)
     } finally {
         if (undispatchedCompletion == null || undispatchedCompletion.clearThreadContext()) {
             restoreThreadContext(context, oldValue)

@@ -34,3 +34,6 @@ internal expect inline fun <T> withCoroutineContext(context: CoroutineContext, c
 internal expect inline fun <T> withContinuationContext(continuation: Continuation<*>, countOrElement: Any?, block: () -> T): T
 internal expect fun Continuation<*>.toDebugString(): String
 internal expect val CoroutineContext.coroutineName: String?
+
+// added by IntelliJ
+internal expect inline fun <T> withThreadLocalContext(context: CoroutineContext, block: () -> T) : T
