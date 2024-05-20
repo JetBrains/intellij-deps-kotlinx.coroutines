@@ -16,6 +16,7 @@ module kotlinx.coroutines.core {
     exports kotlinx.coroutines.flow.internal;
     exports kotlinx.coroutines.future;
     exports kotlinx.coroutines.internal;
+    exports kotlinx.coroutines.internal.intellij;
     exports kotlinx.coroutines.intrinsics;
     exports kotlinx.coroutines.scheduling;
     exports kotlinx.coroutines.selects;
