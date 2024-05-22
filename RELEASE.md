@@ -1,5 +1,7 @@
 # com.intellij.platform:kotlinx-coroutines-* release
 
+`master` branch is the upstream `master` with all the patches applied.
+
 ```
 # update branches
 # git remote add upstream https://github.com/Kotlin/kotlinx.coroutines.git 
@@ -7,15 +9,25 @@ git checkout master
 git fetch upstream
 git fetch origin
 
-# prepare new master with patches
+# if new patch commits need to be cherry-picked without main library version upgrade, cherry-pick them to master branch
+
+# if library version has changed, reapply all the patches on new upstream master
+# update intellij/patch-base
+git checkout intellij/patch-base
+git rebase upstream/master
+# apply patches to new master
+git checkout master
 git reset --hard upstream/master
 git rebase intellij/patch-base
-git rebase intellij/whatever-patches-we-have, see IntelliJ-patches.md for the list of branches
-
-# Remember to change the version in `gradle.properties` to something like `1.8.4-intellij-SNAPSHOT`
-# commit version change
-
+# also rebase patch branches on top of new intellij/patch-base[, maybe squash them for cherry-pick], then cherry-pick the patches
+git cherry-pick <patch commits from intellij/whatever-patches-we-have>, see IntelliJ-patches.md of the last published version for the list of patches
 git push origin master --force
+
+# prepare a release branch from the master branch
+git checkout -b release/<version>, e.g., release/1.8.0-intellij-6
+# change the version in `gradle.properties`, e.g., to 1.8.0-intellij-6
+# commit version change
+git push origin release/<version>
 ```
 
 ---
