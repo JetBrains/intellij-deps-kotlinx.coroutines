@@ -201,7 +201,7 @@ private fun <T> Flow<T>.debounceInternal(timeoutMillisSelector: (T) -> Long): Fl
     scopedFlow { downstream ->
         // Produce the values using the default (rendezvous) channel
         val values = produce {
-            collect { value -> send(value ?: NULL) }
+            collect { value -> send(value?.let(::wrapInternal) ?: NULL) }
         }
         // Now consume the values
         var lastValue: Any? = null
@@ -209,10 +209,10 @@ private fun <T> Flow<T>.debounceInternal(timeoutMillisSelector: (T) -> Long): Fl
             var timeoutMillis = 0L // will be always computed when lastValue != null
             // Compute timeout for this value
             if (lastValue != null) {
-                timeoutMillis = timeoutMillisSelector(NULL.unbox(lastValue))
+                timeoutMillis = timeoutMillisSelector(NULL.unbox(unwrapInternal(lastValue)))
                 require(timeoutMillis >= 0L) { "Debounce timeout should not be negative" }
                 if (timeoutMillis == 0L) {
-                    downstream.emit(NULL.unbox(lastValue))
+                    downstream.emitInternal(lastValue)
                     lastValue = null // Consume the value
                 }
             }
@@ -223,17 +223,17 @@ private fun <T> Flow<T>.debounceInternal(timeoutMillisSelector: (T) -> Long): Fl
                 // Set timeout when lastValue exists and is not consumed yet
                 if (lastValue != null) {
                     onTimeout(timeoutMillis) {
-                        downstream.emit(NULL.unbox(lastValue))
+                        downstream.emitInternal<T>(lastValue)
                         lastValue = null // Consume the value
                     }
                 }
                 values.onReceiveCatching { value ->
                     value
-                        .onSuccess { lastValue = it }
+                        .onSuccess { lastValue = wrapInternal(it) }
                         .onFailure {
                             it?.let { throw it }
                             // If closed normally, emit the latest value
-                            if (lastValue != null) downstream.emit(NULL.unbox(lastValue))
+                            if (lastValue != null) downstream.emitInternal<T>(lastValue)
                             lastValue = DONE
                         }
                 }
@@ -270,7 +270,7 @@ public fun <T> Flow<T>.sample(periodMillis: Long): Flow<T> {
     require(periodMillis > 0) { "Sample period should be positive" }
     return scopedFlow { downstream ->
         val values = produce(capacity = Channel.CONFLATED) {
-            collect { value -> send(value ?: NULL) }
+            collect { value -> send(value?.let(::wrapInternal) ?: NULL) }
         }
         var lastValue: Any? = null
         val ticker = fixedPeriodTicker(periodMillis)
@@ -278,7 +278,7 @@ public fun <T> Flow<T>.sample(periodMillis: Long): Flow<T> {
             select<Unit> {
                 values.onReceiveCatching { result ->
                     result
-                        .onSuccess { lastValue = it }
+                        .onSuccess { lastValue = wrapInternal(it) }
                         .onFailure {
                             it?.let { throw it }
                             ticker.cancel(ChildCancelledException())
@@ -290,7 +290,7 @@ public fun <T> Flow<T>.sample(periodMillis: Long): Flow<T> {
                 ticker.onReceive {
                     val value = lastValue ?: return@onReceive
                     lastValue = null // Consume the value
-                    downstream.emit(NULL.unbox(value))
+                    downstream.emitInternal(value)
                 }
             }
         }
