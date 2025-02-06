@@ -89,3 +89,8 @@ Why not just let `next` return a maybe wrapped value? That's because it is heavi
 Changes were made to lambda parameter `onElementRetrieved` in `BufferedChannel<E>` methods: now they accept `Any?` instead of `E` because now they may be given a wrapped value.
 
 `SelectImplementation.complete` now uses `debuggerCapture` to properly propagate value that might come from flows. 
+
+## `ThreadContextElement` is moved to common
+
+The motivation of this change is enabling `ThreadContextElements` in Kotlin/Native, Kotlin/JS and Kotlin/wasm.
+The API is left intact.
