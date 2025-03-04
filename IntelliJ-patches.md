@@ -45,11 +45,19 @@ To acquire an analogue of `limitedParallelism` dispatcher which supports paralle
 with `.softLimitedParallelism`, e.g., `.limitedParallelism(1)` may be used as a synchronization manager and in this case
 exceeding the parallelism limit would eliminate this (likely expected) side effect.
 
+### General parallelism compensation
+
+`runBlocking` is not the only operation that causes thread starvation. In the IntelliJ platform, we are also dealing with
+ the acquisition of read lock, which is essentially a blocking operation on a monitor. Any code can block on this monitor, 
+which results in a deadlock when there are no threads in a limited-thread dispatcher that are able to cancel the cancelling coroutines.
+We provide a user-visible function for parallelism compensation for arbitrary blocking operation.
+
 ### API
 - `runBlockingWithParallelismCompensation` - an analogue of `runBlocking` which also compensates parallelism of the
   associated coroutine dispatcher when it decides to park the thread
 - `CoroutineDispatcher.softLimitedParallelism` – an analogue of `.limitedParallelism` which supports
   parallelism compensation
+- `runAndCompensateParallelism` - a wrapper for an arbitrary blocking operation that initiates parallelism compensation after deadline.
 
 ## Asynchronous stack traces for flows in the IDEA debugger
 

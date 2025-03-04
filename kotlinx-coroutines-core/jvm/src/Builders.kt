@@ -8,6 +8,7 @@ import kotlin.contracts.ExperimentalContracts
 import kotlin.contracts.InvocationKind
 import kotlin.contracts.contract
 import kotlin.coroutines.*
+import kotlin.time.Duration
 
 /**
  * The same as [runBlocking], but for consumption from Java.
@@ -83,7 +84,7 @@ private class BlockingCoroutine<T>(
                     if (isCompleted) break
                     if (parkNanos > 0) {
                         if (compensateParallelism) {
-                            withCompensatedParallelism {
+                            withCompensatedParallelism(Duration.ZERO) {
                                 parkNanos(this, parkNanos)
                             }
                         } else {
