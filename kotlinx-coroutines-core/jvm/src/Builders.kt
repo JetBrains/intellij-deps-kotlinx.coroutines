@@ -7,6 +7,7 @@ package kotlinx.coroutines
 import kotlinx.coroutines.scheduling.withCompensatedParallelism
 import kotlin.contracts.*
 import kotlin.coroutines.*
+import kotlin.time.Duration
 
 /**
  * Runs a new coroutine and **blocks** the current thread _interruptibly_ until its completion.
@@ -113,7 +114,7 @@ private class BlockingCoroutine<T>(
                     if (isCompleted) break
                     if (parkNanos > 0) {
                         if (compensateParallelism) {
-                            withCompensatedParallelism {
+                            withCompensatedParallelism(Duration.ZERO) {
                                 parkNanos(this, parkNanos)
                             }
                         } else {
