@@ -10,8 +10,10 @@ import kotlinx.coroutines.internal.softLimitedParallelism as softLimitedParallel
 import kotlinx.coroutines.internal.SoftLimitedDispatcher
 import kotlinx.coroutines.runBlockingWithParallelismCompensation as runBlockingWithParallelismCompensationImpl
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.scheduling.withCompensatedParallelism
 import kotlin.coroutines.*
 import kotlin.jvm.Throws
+import kotlin.time.Duration
 
 internal val currentContextThreadLocal : ThreadLocal<CoroutineContext?> = ThreadLocal.withInitial { null }
 
@@ -50,4 +52,23 @@ public object IntellijCoroutines {
      * has returned. Throws [UnsupportedOperationException] if [this] does not support parallelism compensation mechanism.
      */
     public fun CoroutineDispatcher.softLimitedParallelism(parallelism: Int): CoroutineDispatcher = softLimitedParallelismImpl(parallelism)
+
+    /**
+     * Executes [action] and **advises** to compensate parallelism if [action] does not finish within [timeout].
+     *
+     * Suppose that you are dealing with an operation that blocks the underlying thread.
+     * If the blocked thread happens to be from a limited-thread-pool dispatcher, then you face the problem of thread starvation:
+     * your system underutilizes the available CPU. In severe cases, this may result in a deadlock.
+     * To increase the size of the thread pool, you can wrap the operation into this function.
+     *
+     * Remember that threads are expensive, so you need to choose an appropriate [timeout]
+     * so that parallelism compensation would be less expensive than waiting for [action] to finish.
+     *
+     * There are intentionally few guarantees that this function will have side effects.
+     * Generally, parallelism compensation applies only to threads that are ready for compensation,
+     * such as [Dispatchers.Default] or [Dispatchers.IO].
+     */
+    public fun <T> runAndCompensateParallelism(timeout: Duration, action: () -> T): T {
+        return withCompensatedParallelism(timeout, action)
+    }
 }
