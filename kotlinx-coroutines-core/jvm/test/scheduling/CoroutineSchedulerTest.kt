@@ -1,6 +1,7 @@
 package kotlinx.coroutines.scheduling
 
 import kotlinx.coroutines.testing.*
+import kotlinx.coroutines.*
 import org.junit.Test
 import java.lang.Runnable
 import java.util.concurrent.*
@@ -79,7 +80,7 @@ class CoroutineSchedulerTest : TestBase() {
                 it.dispatch(Runnable {
                     expect(2)
                     finishLatch.countDown()
-                }, fair = true)
+                }, tailDispatch = true)
             })
 
             startLatch.countDown()
