@@ -102,3 +102,8 @@ Changes were made to lambda parameter `onElementRetrieved` in `BufferedChannel<E
 
 The motivation of this change is enabling `ThreadContextElements` in Kotlin/Native, Kotlin/JS and Kotlin/wasm.
 The API is left intact.
+
+## Tasks running with `Dispatchers.Default` has their own marker in stacktrace
+
+This is a diagnostic improvement to detect cpu-bound tasks without looking at the source code. 
+Now such tasks have `runDefaultDispatcherTask` in stacktrace.
