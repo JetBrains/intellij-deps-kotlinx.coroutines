@@ -903,11 +903,19 @@ internal class CoroutineScheduler(
                     state = WorkerState.DORMANT
                 }
             } else {
-                runTaskSafely(task)
+                runDefaultDispatcherTask(task)
                 if (tryDecompensateCpu()) {
                     state = WorkerState.DORMANT
                 }
             }
+        }
+
+        /**
+         * A marker function that indicates that the task is executed on the Default dispatcher.
+         * This marker is needed for detecting it in stacktrace, hence this function must NOT be inlined
+         */
+        private fun runDefaultDispatcherTask(task: Task) {
+            runTaskSafely(task)
         }
 
         /*
