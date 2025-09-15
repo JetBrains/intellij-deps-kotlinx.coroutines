@@ -18,6 +18,11 @@ publishing {
             name = "BuildLocal"
             url = uri(project.rootProject.layout.buildDirectory.dir("build-local-repository"))
         }
+        configureMavenPublication(this, project)
+        maven {
+            name = "MavenCentralArtifacts"
+            url = rootProject.layout.buildDirectory.dir("maven-central-artifacts").get().asFile.toURI()
+        }
     }
 
     if (!isMultiplatform && !isBom) {
