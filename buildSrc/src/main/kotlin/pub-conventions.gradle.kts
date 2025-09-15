@@ -15,6 +15,9 @@ apply(plugin = "signing")
 publishing {
     repositories {
         configureMavenPublication(this, project)
+        maven {
+            url = rootProject.layout.buildDirectory.dir("maven-central-artifacts").get().asFile.toURI()
+        }
     }
 
     if (!isMultiplatform && !isBom) {
