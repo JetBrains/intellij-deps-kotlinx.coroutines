@@ -16,6 +16,7 @@ publishing {
     repositories {
         configureMavenPublication(this, project)
         maven {
+            name = "MavenCentralArtifacts"
             url = rootProject.layout.buildDirectory.dir("maven-central-artifacts").get().asFile.toURI()
         }
     }
