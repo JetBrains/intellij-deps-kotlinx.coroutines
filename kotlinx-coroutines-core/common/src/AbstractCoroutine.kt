@@ -6,6 +6,9 @@ import kotlinx.coroutines.CoroutineStart.*
 import kotlinx.coroutines.intrinsics.*
 import kotlin.coroutines.*
 import kotlinx.coroutines.internal.ScopeCoroutine
+import kotlinx.coroutines.internal.intellij.probeJobCancelled
+import kotlinx.coroutines.internal.intellij.probeJobCompleted
+import kotlinx.coroutines.internal.intellij.probeJobCreated
 
 /**
  * Abstract base class for implementation of coroutines in coroutine builders.
@@ -56,6 +59,10 @@ public abstract class AbstractCoroutine<in T>(
     @Suppress("LeakingThis")
     public final override val context: CoroutineContext = parentContext + this
 
+    init {
+        probeJobCreated(this)
+    }
+
     /**
      * The context of this scope which is the same as the [context] of this coroutine.
      */
@@ -86,10 +93,14 @@ public abstract class AbstractCoroutine<in T>(
 
     @Suppress("UNCHECKED_CAST")
     protected final override fun onCompletionInternal(state: Any?) {
-        if (state is CompletedExceptionally)
+        if (state is CompletedExceptionally) {
             onCancelled(state.cause, state.handled)
-        else
+            probeJobCancelled(this)
+        }
+        else {
             onCompleted(state as T)
+            probeJobCompleted(this)
+        }
     }
 
     /**
