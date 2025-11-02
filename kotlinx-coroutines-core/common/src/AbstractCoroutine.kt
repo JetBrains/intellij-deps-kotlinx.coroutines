@@ -60,7 +60,7 @@ public abstract class AbstractCoroutine<in T>(
     public final override val context: CoroutineContext = parentContext + this
 
     init {
-        probeJobCreated(this)
+        probeJobCreated(this, parentContext)
     }
 
     /**
