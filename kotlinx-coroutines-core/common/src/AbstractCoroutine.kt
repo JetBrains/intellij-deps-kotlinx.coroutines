@@ -59,10 +59,6 @@ public abstract class AbstractCoroutine<in T>(
     @Suppress("LeakingThis")
     public final override val context: CoroutineContext = parentContext + this
 
-    init {
-        probeJobCreated(this, parentContext)
-    }
-
     /**
      * The context of this scope which is the same as the [context] of this coroutine.
      */
@@ -93,14 +89,10 @@ public abstract class AbstractCoroutine<in T>(
 
     @Suppress("UNCHECKED_CAST")
     protected final override fun onCompletionInternal(state: Any?) {
-        if (state is CompletedExceptionally) {
+        if (state is CompletedExceptionally)
             onCancelled(state.cause, state.handled)
-            probeJobCancelled(this)
-        }
-        else {
+        else
             onCompleted(state as T)
-            probeJobCompleted(this)
-        }
     }
 
     /**
