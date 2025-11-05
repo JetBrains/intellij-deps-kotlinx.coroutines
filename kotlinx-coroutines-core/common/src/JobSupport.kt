@@ -4,6 +4,9 @@ package kotlinx.coroutines
 
 import kotlinx.atomicfu.*
 import kotlinx.coroutines.internal.*
+import kotlinx.coroutines.internal.intellij.probeJobCancelled
+import kotlinx.coroutines.internal.intellij.probeJobCompleted
+import kotlinx.coroutines.internal.intellij.probeJobCreated
 import kotlinx.coroutines.selects.*
 import kotlin.coroutines.*
 import kotlin.coroutines.intrinsics.*
@@ -22,6 +25,10 @@ import kotlin.jvm.*
 @OptIn(InternalForInheritanceCoroutinesApi::class)
 @Deprecated(level = DeprecationLevel.ERROR, message = "This is internal API and may be removed in the future releases")
 public open class JobSupport constructor(active: Boolean) : Job, ChildJob, ParentJob {
+    init {
+        probeJobCreated(this)
+    }
+
     final override val key: CoroutineContext.Key<*> get() = Job
 
     /*
@@ -225,7 +232,7 @@ public open class JobSupport constructor(active: Boolean) : Job, ChildJob, Paren
         // Process state updates for the final state before the state of the Job is actually set to the final state
         // to avoid races where outside observer may see the job in the final state, yet exception is not handled yet.
         if (!wasCancelling) onCancelling(finalException)
-        onCompletionInternal(finalState)
+        onCompletionInternalImpl(finalState)
         // Then CAS to completed state -> it must succeed
         val casSuccess = _state.compareAndSet(state, finalState.boxIncomplete())
         assert { casSuccess }
@@ -284,7 +291,7 @@ public open class JobSupport constructor(active: Boolean) : Job, ChildJob, Paren
         assert { update !is CompletedExceptionally } // only for normal completion
         if (!_state.compareAndSet(state, update.boxIncomplete())) return false
         onCancelling(null) // simple state is not a failure
-        onCompletionInternal(update)
+        onCompletionInternalImpl(update)
         completeStateFinalization(state, update)
         return true
     }
@@ -1147,6 +1154,15 @@ public open class JobSupport constructor(active: Boolean) : Job, ChildJob, Paren
      * @suppress **This is unstable API and it is subject to change.**
      */
     protected open fun onCompletionInternal(state: Any?) {}
+
+    @Suppress("NOTHING_TO_INLINE")
+    private inline fun onCompletionInternalImpl(state: Any?) {
+        onCompletionInternal(state)
+        if (state is CompletedExceptionally)
+            probeJobCancelled(this)
+        else
+            probeJobCompleted(this)
+    }
 
     /**
      * Override for the very last action on job's completion to resume the rest of the code in

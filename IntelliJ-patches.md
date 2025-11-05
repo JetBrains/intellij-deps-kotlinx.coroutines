@@ -102,3 +102,15 @@ Changes were made to lambda parameter `onElementRetrieved` in `BufferedChannel<E
 
 The motivation of this change is enabling `ThreadContextElements` in Kotlin/Native, Kotlin/JS and Kotlin/wasm.
 The API is left intact.
+
+## Observability probes for Job
+
+Probes to track the Job hierarchy were added, they are similar to the DebugProbes that are called for coroutines.
+Additional probes are needed because there may be Jobs without coroutines (like supervisor scopes), that are not tracked by DebugProbes.
+
+### API
+
+Three methods are added as an internal API that may be transformed by observability tools/profilers to collect information about the Job hierarchy:
+* `kotlinx.coroutines.internal.intellij.JobProbesKt.probeJobCreated`
+* `kotlinx.coroutines.internal.intellij.JobProbesKt.probeJobCompleted`
+* `kotlinx.coroutines.internal.intellij.JobProbesKt.probeJobCancelled`
