@@ -114,3 +114,8 @@ Three methods are added as an internal API that may be transformed by observabil
 * `kotlinx.coroutines.internal.intellij.JobProbesKt.probeJobCreated`
 * `kotlinx.coroutines.internal.intellij.JobProbesKt.probeJobCompleted`
 * `kotlinx.coroutines.internal.intellij.JobProbesKt.probeJobCancelled`
+
+## Quickfix for IJPL-251805
+
+This is a performance optimization that helps to reduce CPU consumption when coroutine dumps are enabled.
+To be removed in future versions when these changes are accepted in upstream.
