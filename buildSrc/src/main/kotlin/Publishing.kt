@@ -4,6 +4,7 @@ import groovy.util.Node
 import groovy.util.NodeList
 import org.gradle.api.Project
 import org.gradle.api.XmlProvider
+import org.gradle.api.artifacts.dsl.RepositoryHandler
 import org.gradle.api.publish.PublishingExtension
 import org.gradle.api.publish.maven.*
 import org.gradle.api.publish.maven.tasks.AbstractPublishToMaven
@@ -11,6 +12,7 @@ import org.gradle.api.tasks.*
 import org.gradle.api.tasks.bundling.Jar
 import org.gradle.kotlin.dsl.*
 import org.gradle.plugins.signing.*
+import java.net.URI
 
 // Pom configuration
 
@@ -38,6 +40,45 @@ fun MavenPom.configureMavenCentralMetadata(project: Project) {
 
     scm {
         url = "https://github.com/Kotlin/kotlinx.coroutines"
+    }
+}
+
+/**
+ * 'libs.space.pub' is a dev option that is set on our CI in order to publish
+ * dev build into 'https://maven.pkg.jetbrains.space/public/p/kotlinx-coroutines/maven' Maven repository.
+ * In order to use it, pass the corresponding ENV to the TC 'Deploy' task.
+ */
+private val Project.spacePublicationEnabled: Boolean
+    get() = getSensitiveProperty("libs.space.pub")?.equals("true") ?: false
+
+fun Project.mavenRepositoryUri(): URI {
+    if (spacePublicationEnabled) {
+        val spaceRepoUrl = getSensitiveProperty("libs.space.url")
+        return URI(spaceRepoUrl ?: "https://maven.pkg.jetbrains.space/public/p/kotlinx-coroutines/maven")
+    }
+
+    val repositoryId: String? = System.getenv("libs.repository.id")
+    return if (repositoryId == null) {
+        URI("https://oss.sonatype.org/service/local/staging/deploy/maven2/")
+    } else {
+        URI("https://oss.sonatype.org/service/local/staging/deployByRepositoryId/$repositoryId")
+    }
+}
+
+fun configureMavenPublication(rh: RepositoryHandler, project: Project) {
+    rh.maven {
+        url = project.mavenRepositoryUri()
+        credentials {
+            if (project.spacePublicationEnabled) {
+                // Configure space credentials
+                username = project.getSensitiveProperty("libs.space.user")
+                password = project.getSensitiveProperty("libs.space.password")
+            } else {
+                // Configure sonatype credentials
+                username = project.getSensitiveProperty("libs.sonatype.user")
+                password = project.getSensitiveProperty("libs.sonatype.password")
+            }
+        }
     }
 }
 

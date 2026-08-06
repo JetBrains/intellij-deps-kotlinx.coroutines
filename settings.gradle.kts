@@ -6,8 +6,11 @@ pluginManagement {
     }
 
     repositories {
-        maven(url = "https://maven.pkg.jetbrains.space/kotlin/p/dokka/dev/")
-        gradlePluginPortal()
+        // buildSrc/src/main/kotlin/CacheRedirector.kt is not on the settings classpath,
+        // so redirector URLs are spelled out here. Keep in sync with build.gradle.kts.
+        maven(url = "https://cache-redirector.jetbrains.com/plugins.gradle.org/m2")
+        maven(url = "https://cache-redirector.jetbrains.com/maven-central")
+        maven(url = "https://cache-redirector.jetbrains.com/maven.pkg.jetbrains.space/kotlin/p/dokka/dev")
     }
 }
 
