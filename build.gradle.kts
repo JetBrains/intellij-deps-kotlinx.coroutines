@@ -10,8 +10,12 @@ buildscript {
     }
 
     repositories {
-        mavenCentral()
-        maven(url = "https://plugins.gradle.org/m2/")
+        mavenCentral {
+            url = uri("https://cache-redirector.jetbrains.com/maven-central")
+        }
+        maven {
+            url = uri("https://cache-redirector.jetbrains.com/plugins.gradle.org/m2/")
+        }
         addDevRepositoryIfEnabled(this, project)
         mavenLocal()
     }
@@ -89,7 +93,9 @@ allprojects {
          * transitive dependencies was removed from jcenter, thus breaking gradle dependency resolution
          */
         google()
-        mavenCentral()
+        mavenCentral {
+            url = uri("https://cache-redirector.jetbrains.com/maven-central")
+        }
         addDevRepositoryIfEnabled(this, project)
     }
 }
