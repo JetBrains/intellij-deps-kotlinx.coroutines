@@ -296,6 +296,14 @@ internal class CoroutineScheduler(
      */
     private val cpuDecompensationRequests = atomic(0)
 
+    /**
+     * Number of CPU permits added by [tryIncreaseCpuParallelism] calls that have not
+     * yet been reclaimed by a matching [tryDecreaseCpuParallelism] call. Acts as a safety mechanism that
+     * guarantees this counter stays within the 0..[MAX_OUTSTANDING_CPU_COMPENSATIONS] range.
+     */
+    private var outstandingCpuCompensations = 0
+    private val compensationLock = SynchronizedObject()
+
     private val createdWorkers: Int inline get() = (controlState.value and CREATED_MASK).toInt()
     private val availableCpuPermits: Int inline get() = availableCpuPermits(controlState.value)
 
@@ -311,7 +319,8 @@ internal class CoroutineScheduler(
     private inline fun incrementBlockingTasks() = controlState.addAndGet(1L shl BLOCKING_SHIFT)
 
     private inline fun decrementBlockingTasks() {
-        controlState.addAndGet(-(1L shl BLOCKING_SHIFT))
+        val oldState = controlState.getAndAdd(-(1L shl BLOCKING_SHIFT))
+        assert { blockingTasks(oldState) > 0 }
     }
 
     private inline fun tryAcquireCpuPermit(): Boolean = controlState.loop { state ->
@@ -321,13 +330,34 @@ internal class CoroutineScheduler(
         if (controlState.compareAndSet(state, update)) return true
     }
 
+    private inline fun tryAcquireCpuPermitAndDecrementBlockingTasks(): Boolean = controlState.loop { state ->
+        val available = availableCpuPermits(state)
+        if (available == 0) return false
+        assert { blockingTasks(state) > 0 } // Catch issues easier during tests
+        if (blockingTasks(state) == 0) return false // But avoid invalid states during runtime
+        val update = state - (1L shl CPU_PERMITS_SHIFT) - (1L shl BLOCKING_SHIFT)
+        if (controlState.compareAndSet(state, update)) return true
+    }
+
     private inline fun releaseCpuPermit() = controlState.addAndGet(1L shl CPU_PERMITS_SHIFT)
+    private inline fun releaseCpuPermitAndIncrementBlockingWorkers() = controlState.addAndGet(
+        (1L shl CPU_PERMITS_SHIFT) or (1L shl BLOCKING_SHIFT)
+    )
 
     private fun tryDecrementDecompensationRequests(): Boolean {
         val requests = cpuDecompensationRequests.value
         if (requests == 0) return false
         assert { requests > 0 }
         return cpuDecompensationRequests.compareAndSet(requests, requests - 1)
+    }
+
+    private fun tryDecrementBlockingTaskIfNoCpuPermitAvailable(): Boolean {
+        val state = controlState.value
+        if (availableCpuPermits(state) > 0) return false
+        assert { blockingTasks(state) > 0 } // Catch issues easier during tests
+        if (blockingTasks(state) == 0) return false // But avoid invalid states during runtime
+        val updatedState = state - (1L shl BLOCKING_SHIFT)
+        return controlState.compareAndSet(state, updatedState)
     }
 
     // This is used a "stop signal" for close and shutdown functions
@@ -368,6 +398,14 @@ internal class CoroutineScheduler(
     fun shutdown(timeout: Long) {
         // atomically set termination flag which is checked when workers are added or removed
         if (!_isTerminated.compareAndSet(false, true)) return
+
+        synchronized(compensationLock) {
+            while (outstandingCpuCompensations > 0) {
+                val decreased = tryDecreaseCpuParallelism()
+                assert { decreased }
+            }
+        }
+
         // make sure we are not waiting for the current thread
         val currentWorker = currentWorker()
         // Capture # of created workers that cannot change anymore (mind the synchronized block!)
@@ -602,6 +640,83 @@ internal class CoroutineScheduler(
             "blocking tasks = ${blockingTasks(state)}, " +
             "CPUs acquired = ${corePoolSize - availableCpuPermits(state)}" +
             "}]"
+    }
+
+    /**
+     * Increases the amount of allowed CPU threads by one.
+     *
+     * The amount of compensated threads cannot exceed [MAX_OUTSTANDING_CPU_COMPENSATIONS].
+     *
+     * The CPU compensation mechanism is part of the IntelliJ patch and has not been tested for
+     * all corner cases, such as [MAX_SUPPORTED_POOL_SIZE] parallel blocking task running, where an integer overflow
+     * is possible.
+     *
+     * @return `true` if the parallelism was increased, `false` if the scheduler is already terminated or
+     * [MAX_OUTSTANDING_CPU_COMPENSATIONS] or [maxPoolSize] has already been reached.
+     */
+    fun tryIncreaseCpuParallelism(): Boolean = synchronized(compensationLock) {
+        if (isTerminated) return false
+
+        if (outstandingCpuCompensations >= MAX_OUTSTANDING_CPU_COMPENSATIONS ||
+            outstandingCpuCompensations >= maxPoolSize - corePoolSize
+        ) {
+            return false
+        }
+
+        outstandingCpuCompensations++
+
+        if (tryDecrementDecompensationRequests()) {
+            // instead of increasing the parallelism limit, we removed a request to decrease it
+            incrementBlockingTasks()
+        } else {
+            // CPU workers are counted as `number of workers - number of blocking tasks`.
+            // A new CPU worker can be allocated only if there are fewer CPU workers than [corePoolSize].
+            // [corePoolSize] is a constant value, and changing it may lead to unexpected bugs.
+            // Artificially increment the number of blocking tasks to decrease the number
+            // of CPU workers.
+            releaseCpuPermitAndIncrementBlockingWorkers()
+        }
+        signalCpuWork()
+        return true
+    }
+
+    /**
+     * Decreases the amount of allowed CPU threads by one, reclaiming a previous
+     * [tryIncreaseCpuParallelism] call.
+     *
+     * Cannot decrease the amount below the initial [corePoolSize]; in this case
+     * the function does nothing and returns `false`.
+     *
+     * This function is part of the IntelliJ patch.
+     *
+     * @return `true` if the parallelism was decreased, `false` if there is no outstanding
+     * [tryIncreaseCpuParallelism] call left to reclaim.
+     */
+    fun tryDecreaseCpuParallelism(): Boolean = synchronized(compensationLock) {
+        if (outstandingCpuCompensations <= 0) return false
+        outstandingCpuCompensations--
+
+        // A CPU permit is acquired, which decreases the available CPU permits.
+        // Artificially decrease the number of blocking tasks, to correctly calculate
+        // the number of CPU workers. See [tryIncreaseCpuParallelism] for more details.
+        // Blocking tasks cannot go below 0: CPU parallelism can decrease only when there
+        // is an outstanding CPU compensation, so for every blocking task decrement there is
+        // a matching incrementBlockingTasks() call done in [tryIncreaseCpuParallelism].
+        while (true) {
+            // The loop to ensure that:
+            // a) blocking tasks are decremented either with acquiring cpu permit or when there is no cpu permits
+            // b) blocking tasks can not go below 0
+            if (tryAcquireCpuPermitAndDecrementBlockingTasks()) {
+                break
+            } else {
+                if (tryDecrementBlockingTaskIfNoCpuPermitAvailable()) {
+                    cpuDecompensationRequests.incrementAndGet()
+                    break
+                }
+            }
+        }
+
+        return true
     }
 
     /** see [Worker.runTaskSafely] */

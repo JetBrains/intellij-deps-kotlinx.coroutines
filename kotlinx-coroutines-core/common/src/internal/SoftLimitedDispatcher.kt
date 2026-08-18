@@ -14,6 +14,17 @@ import kotlin.coroutines.*
  */
 internal interface SoftLimitedParallelism {
     fun softLimitedParallelism(parallelism: Int, name: String?): CoroutineDispatcher
+
+    /**
+     * Attempts to adjust the parallelism limit by [parallelismDelta].
+     *
+     * It is not guaranteed that the new parallelism limit will be equal to `oldParallelism + parallelismDelta`:
+     * the adjustment may be applied only partially, or not at all.
+     *
+     * @param parallelismDelta a positive or negative value; it is recommended to use +1 and -1.
+     * @return the actual adjustment that was made.
+     */
+    fun tryAdjustParallelism(parallelismDelta: Int): Int
 }
 
 /**
@@ -27,6 +38,12 @@ internal fun CoroutineDispatcher.softLimitedParallelism(parallelism: Int, name: 
     throw UnsupportedOperationException("CoroutineDispatcher.softLimitedParallelism cannot be applied to $this")
 }
 
+internal fun CoroutineDispatcher.tryAdjustParallelism(parallelismDelta: Int): Int {
+    if (this is SoftLimitedParallelism) {
+        return this.tryAdjustParallelism(parallelismDelta)
+    }
+    throw UnsupportedOperationException("CoroutineDispatcher.tryAdjustParallelism cannot be applied to $this")
+}
 /**
  * Introduced as part of IntelliJ patches.
  *
@@ -39,15 +56,18 @@ internal fun CoroutineDispatcher.softLimitedParallelism(parallelism: Int, name: 
 internal class SoftLimitedDispatcher(
     private val dispatcher: CoroutineDispatcher,
     parallelism: Int,
-    private val name: String?
+    private val name: String?,
+    private val hardParallelism: Int = Int.MAX_VALUE
 ) : CoroutineDispatcher(), Delay by (dispatcher as? Delay ?: DefaultDelay), SoftLimitedParallelism {
     private val initialParallelism = parallelism
+    private var additionalSoftParallelism = 0
     // `parallelism limit - runningWorkers`; may be < 0 if decompensation is expected
     private val availablePermits = atomic(parallelism)
 
     private val queue = LockFreeTaskQueue<Runnable>(singleConsumer = false)
 
     private val workerAllocationLock = SynchronizedObject()
+    private val adjustmentLock = SynchronizedObject()
 
     override fun limitedParallelism(parallelism: Int, name: String?): CoroutineDispatcher {
         return super.limitedParallelism(parallelism, name)
@@ -56,7 +76,28 @@ internal class SoftLimitedDispatcher(
     override fun softLimitedParallelism(parallelism: Int, name: String?): CoroutineDispatcher {
         parallelism.checkParallelism()
         if (parallelism >= initialParallelism) return namedOrThis(name)
-        return SoftLimitedDispatcher(this, parallelism, name)
+        return SoftLimitedDispatcher(this, parallelism, name, hardParallelism)
+    }
+
+    override fun tryAdjustParallelism(parallelismDelta: Int): Int = synchronized(adjustmentLock) {
+        // totalParallelism doesn't detect if parallelism was compensated for a specific thread
+        val targetTotalParallelism =
+            (initialParallelism.toLong() + additionalSoftParallelism + parallelismDelta)
+                .coerceIn(initialParallelism.toLong(), hardParallelism.toLong())
+        val actualDelta = (targetTotalParallelism - initialParallelism - additionalSoftParallelism).toInt()
+        if (actualDelta == 0) {
+            return 0
+        }
+        additionalSoftParallelism += actualDelta
+        availablePermits.addAndGet(actualDelta)
+
+        // we need to signal scheduler that new worker can be allocated and can take tasks
+        // instead of exposing signaling API, let's just dispatch empty task
+        // It doesn't make sense to wake up more workers than there is tasks in queue
+        repeat(actualDelta.coerceIn(0, queue.size)) {
+            dispatch(EmptyCoroutineContext, { })
+        }
+        return actualDelta
     }
 
     override fun dispatch(context: CoroutineContext, block: Runnable) {

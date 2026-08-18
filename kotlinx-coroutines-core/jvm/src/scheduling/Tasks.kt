@@ -45,6 +45,17 @@ internal val IDLE_WORKER_KEEP_ALIVE_NS = TimeUnit.SECONDS.toNanos(
     systemProp("kotlinx.coroutines.scheduler.keep.alive.sec", 60L)
 )
 
+/**
+ * IntelliJ patch: the maximum number of outstanding [CoroutineScheduler.tryIncreaseCpuParallelism] calls
+ * that have not yet been reclaimed by a matching [CoroutineScheduler.tryDecreaseCpuParallelism] call.
+ */
+@JvmField
+internal val MAX_OUTSTANDING_CPU_COMPENSATIONS = systemProp(
+    "kotlinx.coroutines.scheduler.max.outstanding.cpu.compensations",
+    1024,
+    minValue = 0
+)
+
 @JvmField
 internal var schedulerTimeSource: SchedulerTimeSource = NanoTimeSource
 
