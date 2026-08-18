@@ -52,12 +52,35 @@ exceeding the parallelism limit would eliminate this (likely expected) side effe
 which results in a deadlock when there are no threads in a limited-thread dispatcher that are able to cancel the cancelling coroutines.
 We provide a user-visible function for parallelism compensation for arbitrary blocking operation.
 
+### Parallelism adjustment
+
+In addition to the automatic compensation performed by `runBlockingWithParallelismCompensation`, a caller may need
+to adjust the parallelism limit of a dispatcher directly. For example, starvation detected by
+an external thread or coroutine may be mitigated by temporarily increasing the parallelism limit.
+
+`tryAdjustParallelism` is a best-effort operation that attempts to shift the effective parallelism limit by
+`parallelismDelta` — positive to increase it and negative to decrease it. The requested adjustment may be applied
+partially or not at all; the function returns the delta that was actually applied.
+
+It is important to note that `tryAdjustParallelism` may be called from any thread, in contrast with
+`runBlockingWithParallelismCompensation`, which relies on the current thread and the associated `Dispatchers` chain.
+
+**Constraints for `Default` dispatcher:**
+- The parallelism limit cannot be decreased below the dispatcher's initial `corePoolSize`.
+- The number of outstanding increases is bounded by `MAX_OUTSTANDING_CPU_COMPENSATIONS` (configurable via a system
+  property). Attempts to exceed this bound return `0`.
+- Outstanding increases are automatically reclaimed on scheduler shutdown.
+
+**Constraints for `IO` dispatcher:**
+- The parallelism can not be decreased below the initial value
+
 ### API
 - `runBlockingWithParallelismCompensation` - an analogue of `runBlocking` which also compensates parallelism of the
   associated coroutine dispatcher when it decides to park the thread
 - `CoroutineDispatcher.softLimitedParallelism` – an analogue of `.limitedParallelism` which supports
   parallelism compensation
 - `runAndCompensateParallelism` - a wrapper for an arbitrary blocking operation that initiates parallelism compensation after deadline.
+- `CoroutineDispatcher.tryAdjustParallelism` - a method that allows to change parallelism limit for the dispatcher
 
 ## Asynchronous stack traces for flows in the IDEA debugger
 

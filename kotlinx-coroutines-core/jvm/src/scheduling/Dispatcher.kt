@@ -62,6 +62,11 @@ private object UnlimitedIoScheduler : CoroutineDispatcher(), SoftLimitedParallel
         if (parallelism >= MAX_POOL_SIZE) return namedOrThis(name)
         return SoftLimitedDispatcher(this, parallelism, name)
     }
+
+    override fun tryAdjustParallelism(parallelismDelta: Int): Int {
+        // Do nothing, because it is unlimited
+        return 0
+    }
 }
 
 // Dispatchers.IO
@@ -103,6 +108,10 @@ internal object DefaultIoScheduler : ExecutorCoroutineDispatcher(), Executor, So
     }
 
     override fun toString(): String = "Dispatchers.IO"
+
+    override fun tryAdjustParallelism(parallelismDelta: Int): Int {
+        return default.tryAdjustParallelism(parallelismDelta)
+    }
 }
 
 // Instantiated in tests so we can test it in isolation
@@ -164,6 +173,35 @@ internal open class SchedulerCoroutineDispatcher(
     override fun softLimitedParallelism(parallelism: Int, name: String?): CoroutineDispatcher {
         parallelism.checkParallelism()
         if (parallelism >= corePoolSize) return namedOrThis(name)
-        return SoftLimitedDispatcher(this, parallelism, name)
+        // to prevent problems with situations like Default.softLimitedParallelism(1).tryAdjustParallelism(100)
+        // we forbid adjusting nested soft limited parallelism of non-blocking (Default-like) dispatchers
+        // above the original `corePoolSize`
+        return SoftLimitedDispatcher(this, parallelism, name, hardParallelism = corePoolSize)
+    }
+
+    override fun tryAdjustParallelism(parallelismDelta: Int): Int {
+        // Stop adjustment after first failed adjustment
+        fun repeatWhileTrue(times: Int, adjustment: () -> Boolean): Int {
+            var applied = 0
+            while (applied < times) {
+                if (!adjustment()) break
+                applied++
+            }
+            return applied
+        }
+
+        if (parallelismDelta > 0) {
+            return repeatWhileTrue(parallelismDelta, {
+                coroutineScheduler.tryIncreaseCpuParallelism()
+            })
+        }
+        if (parallelismDelta < 0) {
+            val successfulAdjustments = repeatWhileTrue(
+                -parallelismDelta.coerceAtLeast(Int.MIN_VALUE + 1),
+                { coroutineScheduler.tryDecreaseCpuParallelism() }
+            )
+            return -successfulAdjustments
+        }
+        return 0
     }
 }
